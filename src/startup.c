@@ -1,49 +1,69 @@
-/*
- * Minimal startup code: vector table + Reset_Handler.
- * No HAL, no C library startup (we link with -nostdlib).
+/* Minimal Cortex-M4 startup for the polling-only blink firmware.
+ * External IRQ vectors are not included; no peripheral IRQ is enabled.
  */
 #include <stdint.h>
 
-/* Symbols defined in linker.ld. Only their addresses matter. */
 extern uint32_t _estack;
-extern uint32_t _sidata, _sdata, _edata;
-extern uint32_t _sbss, _ebss;
+extern uint32_t _sidata;
+extern uint32_t _sdata;
+extern uint32_t _edata;
+extern uint32_t _sbss;
+extern uint32_t _ebss;
 
 int main(void);
-
 void Reset_Handler(void);
 void Default_Handler(void);
 
-/*
- * Cortex-M vector table. Entry 0 is the initial stack pointer, entry 1 is the reset vector.
- * Entries 2-15 are system exceptions; device IRQs (UART, I2C, ...) follow and will be added later.
- * The section name must match KEEP(*(.isr_vector)) in linker.ld.
- */
-__attribute__((section(".isr_vector"), used))
+/* uintptr_t is one 32-bit vector word on the target Cortex-M4 ABI. */
+__attribute__((section(".isr_vector"), used, aligned(128)))
 const uintptr_t vector_table[16] = {
     (uintptr_t)&_estack,
     (uintptr_t)Reset_Handler,
     (uintptr_t)Default_Handler, /* NMI */
     (uintptr_t)Default_Handler, /* HardFault */
-    /* Remaining entries are 0 for now. Add SysTick (entry 15) in week 2. */
+    (uintptr_t)Default_Handler, /* MemManage */
+    (uintptr_t)Default_Handler, /* BusFault */
+    (uintptr_t)Default_Handler, /* UsageFault */
+    0, 0, 0, 0,                /* Reserved */
+    (uintptr_t)Default_Handler, /* SVCall */
+    (uintptr_t)Default_Handler, /* DebugMonitor */
+    0,                         /* Reserved */
+    (uintptr_t)Default_Handler, /* PendSV */
+    (uintptr_t)Default_Handler, /* SysTick */
 };
-
-void Reset_Handler(void)
-{
-    /*
-     * TODO(Jeff): write this yourself.
-     * 1. Copy .data from flash to RAM: word by word from _sidata into [_sdata, _edata).
-     * 2. Zero .bss: write 0 to every word in [_sbss, _ebss).
-     * 3. Call main().
-     * 4. If main() ever returns, loop forever.
-     *
-     * Think about: why must step 1 and 2 happen before main()? What would a global
-     * `int counter = 5;` contain if you skipped step 1?
-     */
-}
 
 void Default_Handler(void)
 {
-    while (1) {
+    for (;;) {
+    }
+}
+
+void Reset_Handler(void)
+{
+    uintptr_t data_begin = (uintptr_t)&_sdata;
+    uintptr_t data_end = (uintptr_t)&_edata;
+    uintptr_t bss_begin = (uintptr_t)&_sbss;
+    uintptr_t bss_end = (uintptr_t)&_ebss;
+    uintptr_t source = (uintptr_t)&_sidata;
+
+    /* Word loops require aligned, ordered linker section boundaries. */
+    if (((source | data_begin | data_end | bss_begin | bss_end) & 3u) != 0u ||
+        data_begin > data_end || bss_begin > bss_end) {
+        Default_Handler();
+    }
+
+    const uint32_t *src = &_sidata;
+    uint32_t *dst = &_sdata;
+    while ((uintptr_t)dst < data_end) {
+        *dst++ = *src++;
+    }
+
+    dst = &_sbss;
+    while ((uintptr_t)dst < bss_end) {
+        *dst++ = 0u;
+    }
+
+    (void)main();
+    for (;;) {
     }
 }

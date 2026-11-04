@@ -1,34 +1,39 @@
-/*
- * Week 1 goal: blink the user LED (LD2) on NUCLEO-F446RE by writing registers directly.
- * LD2 is wired to PA5 (see the Nucleo-64 user manual, UM1724).
- */
 #include <stdint.h>
 
-/*
- * TODO(Jeff): define the registers you need, using addresses from RM0390
- * (STM32F446xx reference manual). Look up:
- *   - RCC base address (memory map table) and the RCC_AHB1ENR offset -> enable the GPIOA clock
- *   - GPIOA base address, GPIOx_MODER offset -> set PA5 to general-purpose output (01)
- *   - GPIOx_ODR offset (or BSRR) -> drive PA5 high/low
- *
- * Pattern:
- *   #define REG32(addr) (*(volatile uint32_t *)(addr))
- *
- * Think about: why `volatile`? What could the compiler do to your blink loop without it?
- */
+#define REG32(addr) (*(volatile uint32_t *)(addr))
 
-static void delay(volatile uint32_t count)
+#define RCC_AHB1ENR REG32(0x40023830u)
+#define GPIOA_MODER REG32(0x40020000u)
+#define GPIOA_BSRR  REG32(0x40020018u)
+
+#define GPIOAEN       (1u << 0)
+#define PA5           5u
+#define PA5_MODE_MASK (3u << (PA5 * 2u))
+#define PA5_OUTPUT    (1u << (PA5 * 2u))
+
+#ifndef BLINK_DELAY_ITERS
+#define BLINK_DELAY_ITERS 500000u
+#endif
+
+static void delay(uint32_t iterations)
 {
-    while (count--) {
+    for (volatile uint32_t i = 0; i < iterations; ++i) {
     }
 }
 
 int main(void)
 {
-    /* TODO(Jeff): 1. enable GPIOA clock  2. configure PA5 as output (clear 2 bits, then set) */
+    RCC_AHB1ENR |= GPIOAEN;
+    (void)RCC_AHB1ENR;
 
-    while (1) {
-        /* TODO(Jeff): toggle PA5 */
-        delay(500000); /* busy-wait; replaced by SysTick in week 2 */
+    GPIOA_MODER =
+        (GPIOA_MODER & ~PA5_MODE_MASK) | PA5_OUTPUT;
+
+    for (;;) {
+        GPIOA_BSRR = 1u << PA5;
+        delay(BLINK_DELAY_ITERS);
+
+        GPIOA_BSRR = 1u << (PA5 + 16u);
+        delay(BLINK_DELAY_ITERS);
     }
 }
