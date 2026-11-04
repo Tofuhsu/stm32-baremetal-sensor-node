@@ -1,0 +1,57 @@
+*** Comments ***
+Firmware tests on an emulated NUCLEO-F446RE (Renode).
+Tests tagged `todo` describe features that are not written yet; CI skips them.
+When a feature lands, remove its `todo` tag so CI starts enforcing it.
+The expected UART strings are a proposed format; change them together with the firmware.
+
+*** Settings ***
+Test Setup        Create Machine
+Test Teardown     Test Teardown
+
+*** Variables ***
+${ROOT}           ${CURDIR}/../..
+${ELF}            ${ROOT}/build/firmware.elf
+${REPL}           ${ROOT}/renode/stm32f446_nucleo.repl
+${UART}           sysbus.usart2
+${LED}            sysbus.gpioPortA.UserLED
+
+*** Keywords ***
+Create Machine
+    Execute Command    using sysbus
+    Execute Command    mach create "nucleo-f446re"
+    Execute Command    machine LoadPlatformDescription @${REPL}
+    Execute Command    sysbus LoadELF @${ELF}
+
+*** Test Cases ***
+Vector Table Sets Initial SP And Reset Vector
+    [Documentation]    At reset the CPU loads SP from 0x08000000 and PC from 0x08000004.
+    ...                The reset vector must be Reset_Handler with the Thumb bit (bit 0) set.
+    ${sp}=             Execute Command    sysbus ReadDoubleWord 0x08000000
+    Should Be Equal As Integers    ${sp}    0x20020000
+    ${vector}=         Execute Command    sysbus ReadDoubleWord 0x08000004
+    ${reset}=          Execute Command    sysbus GetSymbolAddress "Reset_Handler"
+    Should Be Equal As Integers    ${vector}    ${{ (int($reset.strip(), 0) & ~1) | 1 }}
+
+User LED Blinks
+    [Tags]             todo    week1
+    Create LED Tester  ${LED}    defaultTimeout=2
+    Start Emulation
+    Assert LED State   true
+    Assert LED State   false
+
+UART Prints Boot Banner
+    [Tags]             todo    week2
+    Create Terminal Tester    ${UART}    timeout=2
+    Start Emulation
+    Wait For Line On Uart     sensor-node boot
+
+BME280 Reading Reaches UART
+    [Tags]             todo    week3
+    Execute Command    i2c1.bme280 Temperature 25.0
+    Execute Command    i2c1.bme280 Humidity 50.0
+    Execute Command    i2c1.bme280 Pressure 1013.25
+    Create Terminal Tester    ${UART}    timeout=5
+    Start Emulation
+    Wait For Line On Uart     temperature: 25.00
+    Execute Command    i2c1.bme280 Temperature 30.5
+    Wait For Line On Uart     temperature: 30.50

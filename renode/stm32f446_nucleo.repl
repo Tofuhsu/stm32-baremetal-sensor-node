@@ -1,0 +1,26 @@
+// NUCLEO-F446RE board for Renode.
+// Renode has no STM32F446 CPU file, so this starts from the generic STM32F4 file
+// (register-compatible GPIO, RCC, USART, I2C v1) and fixes what differs on this board.
+using "platforms/cpus/stm32f4.repl"
+
+// STM32F446RE: 512 KiB flash, 128 KiB SRAM (SRAM1 112 KiB + SRAM2 16 KiB, contiguous).
+flash:
+    size: 0x80000
+
+sram:
+    size: 0x20000
+
+// LD2 (green user LED) on PA5, active high. UM1724.
+UserLED: Miscellaneous.LED @ gpioPortA 5
+
+gpioPortA:
+    5 -> UserLED@0
+
+// B1 (blue user button) on PC13, pulls the pin low when pressed.
+UserButton: Miscellaneous.Button @ gpioPortC 13
+    invert: true
+    -> gpioPortC@13
+
+// External sensor wired to I2C1 (PB8 = SCL, PB9 = SDA on the Arduino header).
+// GY-BME280 boards default to address 0x76 (SDO to GND). Renode ships this model.
+bme280: I2C.BME280 @ i2c1 0x76

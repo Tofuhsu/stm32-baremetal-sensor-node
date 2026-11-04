@@ -14,6 +14,22 @@ make flash    # program over the on-board ST-LINK (SWD)
 make debug    # OpenOCD GDB server on :3333
 ```
 
+## Emulation (Renode)
+
+The firmware also runs on an emulated board in [Renode](https://renode.io) 1.17, so it can be tested without hardware and on every push.
+
+```bash
+make sim       # interactive run with a USART2 window
+make test      # Robot tests CI enforces
+make test-all  # also runs tests for features not written yet (tagged `todo`, expected to fail)
+```
+
+- `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model).
+- `tests/renode/sensor_node.robot`: checks the vector table now; LED, UART and BME280 tests are tagged `todo` until the matching driver exists. The expected UART strings are a proposed format.
+- `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi` and runs `make test`.
+
+Limits: the emulator models register behavior, not timing, electrical levels or real sensor noise. A passing Renode test does not replace a logic analyzer capture on the real board. The STM32F4 I2C model has not yet been exercised by this firmware.
+
 ## Plan
 
 | Week | Scope |
@@ -29,4 +45,5 @@ To be filled in with method, conditions and raw captures as results are produced
 
 ## AI assistance
 
-Build scaffolding (Makefile, linker script, file layout) was set up with an AI assistant. Startup code, register access and drivers are written by the author; this note will be kept accurate as the project grows.
+Written with an AI assistant: Makefile, linker script, file layout, the Renode board/script files, the Robot tests and the CI workflow.
+Written by the author: startup code (`Reset_Handler`), register definitions and every driver in `src/`. This note is kept accurate as the project grows.

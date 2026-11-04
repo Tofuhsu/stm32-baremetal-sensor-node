@@ -1,0 +1,26 @@
+:name: NUCLEO-F446RE sensor node
+:description: Runs build/firmware.elf on an emulated NUCLEO-F446RE with a BME280 on I2C1.
+
+using sysbus
+$name?="nucleo-f446re"
+$elf?=@build/firmware.elf
+
+mach create $name
+machine LoadPlatformDescription @renode/stm32f446_nucleo.repl
+
+// USART2 is the ST-LINK virtual COM port on the real board (PA2/PA3).
+showAnalyzer sysbus.usart2
+
+// Initial sensor values; change them from the monitor, e.g. `i2c1.bme280 Temperature 30`.
+i2c1.bme280 Temperature 25.0
+i2c1.bme280 Humidity 50.0
+i2c1.bme280 Pressure 1013.25
+
+macro reset
+"""
+    sysbus LoadELF $elf
+"""
+runMacro $reset
+
+// Uncomment to debug with arm-none-eabi-gdb (target remote :3333):
+// machine StartGdbServer 3333

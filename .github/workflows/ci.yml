@@ -1,0 +1,44 @@
+# Builds the firmware and runs the Renode tests on every push.
+# Tests tagged `todo` are skipped until the matching feature exists.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  RENODE_VERSION: 1.17.0
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build
+        run: make
+
+      - name: Install Renode
+        run: |
+          curl -sSL -o renode.tar.gz \
+            https://github.com/renode/renode/releases/download/v${RENODE_VERSION}/renode-${RENODE_VERSION}.linux-portable.tar.gz
+          mkdir -p "$HOME/renode"
+          tar -xzf renode.tar.gz -C "$HOME/renode" --strip-components=1
+          pip install -r "$HOME/renode/tests/requirements.txt"
+
+      - name: Renode tests
+        run: make test RENODE_TEST="$HOME/renode/renode-test"
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-results
+          path: |
+            robot_output.xml
+            log.html
+            report.html
+            logs/
