@@ -26,7 +26,7 @@ make test-host # actual C protocol/compensation tests; sibling cortex-m-emu chec
 ```
 
 - `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model). It replaces the stock I2C1 with `i2c1ack`, so the sensor is `i2c1ack.bme280` in the monitor.
-- `renode/STM32F4_I2C_AckModel.cs`: MIT-licensed copy of Renode's `STM32F1_I2C` (the version pinned by Renode 1.17.0). Each change is marked `ACK model` in the source and follows RM0390: CR1.ACK/POS are stored; another byte is received only after an ACKed one; in receive mode the first byte is received only after ADDR is cleared; in transmit mode TxE is set only after ADDR is cleared. Loaded with `include` before the platform file.
+- `renode/STM32F4_I2C_AckModel.cs`: MIT-licensed copy of Renode's `STM32F1_I2C` (the version pinned by Renode 1.17.0). Each change is marked `ACK model` in the source and follows RM0390: CR1.ACK/POS are stored; another byte is received only after an ACKed one; in receive mode the first byte is received only after ADDR is cleared; in transmit mode TxE is set only after ADDR is cleared, and BTF only after a data byte. An `InstantTransfers` option (off by default, so not used by these tests) completes bytes at once for cortex-m-emu's instruction-by-instruction comparison. Loaded with `include` before the platform file.
 - `tests/renode/sensor_node.robot`: checks the vector table, LED, CRLF UART banner and temperature lines at 25.00 and 30.50 C. All four pass.
 - `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi` and runs `make test`.
 
