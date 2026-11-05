@@ -47,9 +47,63 @@ static void test_general_compensation(void)
     puts("PASS checked int32 compensation: independent int64 oracle with nonzero T3; every centidegree format in supported range");
 }
 
+typedef struct {
+    uint8_t pointer;
+    bool expect_register;
+    unsigned control_writes;
+} zero_calibration_sensor_t;
+
+static void zero_cal_start(void *context, bool read)
+{
+    if (!read) ((zero_calibration_sensor_t *)context)->expect_register = true;
+}
+static bool zero_cal_write(void *context, uint8_t value)
+{
+    zero_calibration_sensor_t *sensor = context;
+    if (sensor->expect_register) {
+        sensor->pointer = value;
+        sensor->expect_register = false;
+    } else if (sensor->pointer == 0xF2 || sensor->pointer == 0xF4) {
+        ++sensor->control_writes;
+    }
+    return true;
+}
+static uint8_t zero_cal_read(void *context, bool ack)
+{
+    (void)ack;
+    zero_calibration_sensor_t *sensor = context;
+    return sensor->pointer++ == 0xD0 ? 0x60 : 0;
+}
+static void zero_cal_stop(void *context) { (void)context; }
+
+static void test_zero_calibration(void)
+{
+    test_bus = bus_new(); rcc_t *rcc = rcc_new();
+    gpio_t *gpio = gpio_new("GPIOB", GPIOB_BASE, rcc, RCC_GPIOB_ENABLE_BIT);
+    i2c_t *i2c = i2c_new(rcc, gpio);
+    zero_calibration_sensor_t sensor = {0};
+    i2c_device_t device = {0x76, &sensor, zero_cal_start, zero_cal_write,
+                           zero_cal_read, zero_cal_stop};
+    assert(test_bus && rcc && gpio && i2c);
+    assert(!bus_add_periph(test_bus, rcc_as_periph(rcc)));
+    assert(!bus_add_periph(test_bus, gpio_as_periph(gpio)));
+    assert(!bus_add_periph(test_bus, i2c_as_periph(i2c)));
+    assert(!i2c_attach(i2c, device));
+    for (unsigned mask = 0; mask < 2; ++mask) {
+        test_primask = mask;
+        assert(!bme280_init());
+        assert(!sensor.control_writes && test_primask == mask);
+    }
+    assert(!bus_fault(test_bus));
+    bus_free(test_bus); i2c_free(i2c); gpio_free(gpio); rcc_free(rcc);
+    puts("PASS zero calibration: ID60 alone is insufficient; init fails before configuration writes");
+}
+
 int main(void)
 {
     test_general_compensation();
+    test_zero_calibration();
+    test_primask = 0;
     test_bus=bus_new(); rcc_t *rcc=rcc_new();
     gpio_t *gpio=gpio_new("GPIOB",GPIOB_BASE,rcc,RCC_GPIOB_ENABLE_BIT);
     i2c_t *i2c=i2c_new(rcc,gpio); bme280_t *bme=bme280_new(0x76);
@@ -63,7 +117,14 @@ int main(void)
     assert(gpio_pin_is_af(gpio,8,4) && gpio_pin_is_af(gpio,9,4));
     uint8_t two[2]; assert(read_registers(0x88,two,2));
     assert(((unsigned)two[0]|((unsigned)two[1]<<8))==24000);
-    const int32_t values[]={2500,3050,-1234,8500,-4000};
+    /* Recheck the one-byte path followed immediately by a calibration burst.
+     * This is the failing sequence in the supplied Renode diagnostic.
+     */
+    uint8_t id, cal[6];
+    assert(read_registers(0xD0, &id, 1) && id == 0x60);
+    assert(read_registers(0x88, cal, sizeof cal));
+    assert(u16(cal) == 24000 && s16(cal + 2) == 25600 && s16(cal + 4) == 0);
+    const int32_t values[]={2500,3050,0,-1234,8500,-4000};
     for(unsigned mask=0;mask<2;++mask) {
         test_primask=mask;
         for(unsigned j=0;j<sizeof values/sizeof values[0];++j) {

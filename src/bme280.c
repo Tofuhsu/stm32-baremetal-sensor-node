@@ -199,7 +199,14 @@ bool bme280_init(void)
     write32(TRISE, 17);
     write32(CR1, PE | ACK);
     uint8_t id, cal[6];
-    if (!read_registers(0xD0, &id, 1) || id != 0x60u || !read_registers(0x88, cal, 6)) return false;
+    if (!read_registers(0xD0, &id, 1) || id != 0x60u ||
+        !read_registers(0x88, cal, sizeof cal)) return false;
+    /* Driver policy, not a Bosch-specified validity bit: a complete all-zero
+     * trimming block is rejected instead of reporting plausible 0.00 C from
+     * a failed register-pointer transfer. A real zero-temperature sample
+     * with valid trimming parameters is still accepted.
+     */
+    if ((u16(cal) | u16(cal + 2) | u16(cal + 4)) == 0u) return false;
     t1 = u16(cal); t2 = s16(cal + 2); t3 = s16(cal + 4);
     /* Bosch 5.4.3/5.4.5: ctrl_hum first; ctrl_meas latches it. T/H x1,
      * pressure skipped. Normal mode lets host-side temperature changes appear.
