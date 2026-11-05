@@ -33,20 +33,20 @@ Vector Table Sets Initial SP And Reset Vector
     Should Be Equal As Integers    ${vector}    ${{ (int($reset.strip(), 0) & ~1) | 1 }}
 
 User LED Blinks
-    [Tags]             todo    week1
+    [Tags]             week1
     Create LED Tester  ${LED}    defaultTimeout=2
     Start Emulation
     Assert LED State   true
     Assert LED State   false
 
 UART Prints Boot Banner
-    [Tags]             todo    week2
+    [Tags]             week2
     Create Terminal Tester    ${UART}    timeout=2
     Start Emulation
     Wait For Line On Uart     sensor-node boot
 
 BME280 Reading Reaches UART
-    [Tags]             todo    week3
+    [Tags]             week3
     Execute Command    i2c1.bme280 Temperature 25.0
     Execute Command    i2c1.bme280 Humidity 50.0
     Execute Command    i2c1.bme280 Pressure 1013.25

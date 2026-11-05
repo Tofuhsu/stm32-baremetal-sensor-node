@@ -1,8 +1,8 @@
 # stm32-baremetal-sensor-node
 
-Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE): no HAL, register-level drivers for GPIO, SysTick, UART (interrupt + ring buffer) and I2C (BME280), with an SSD1306 OLED display.
+Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE): no HAL, register-level GPIO/SysTick, polling USART2 TX and an I2C1 BME280 temperature driver. UART RX/interrupt buffering and an SSD1306 display remain planned.
 
-**Status:** week 1, in progress. Nothing has been run on hardware yet.
+**Status:** GPIO/SysTick blink and the CRLF USART2 boot banner are the previous baseline. This update adds bounded polling I2C1, BME280 initialization and checked integer temperature compensation/formatting. The actual C driver passes host model tests; the updated ARM build, new instruction coverage and Renode/Robot tests have not yet run in the authoring environment. Nothing has been verified on hardware.
 
 ## Build
 
@@ -21,14 +21,15 @@ The firmware also runs on an emulated board in [Renode](https://renode.io) 1.17,
 ```bash
 make sim       # interactive run with a USART2 window
 make test      # Robot tests CI enforces
-make test-all  # also runs tests for features not written yet (tagged `todo`, expected to fail)
+make test-all  # all Robot tests, including the enabled BME280 acceptance test
+make test-host # actual C protocol/compensation tests; sibling cortex-m-emu checkout required
 ```
 
 - `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model).
-- `tests/renode/sensor_node.robot`: checks the vector table now; LED, UART and BME280 tests are tagged `todo` until the matching driver exists. The expected UART strings are a proposed format.
+- `tests/renode/sensor_node.robot`: checks the vector table, LED, CRLF UART banner and temperature lines at 25.00 and 30.50 C. These tests are now enabled and must be run before claiming target acceptance.
 - `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi` and runs `make test`.
 
-Limits: the emulator models register behavior, not timing, electrical levels or real sensor noise. A passing Renode test does not replace a logic analyzer capture on the real board. The STM32F4 I2C model has not yet been exercised by this firmware.
+Limits: the emulator models register behavior, not timing, electrical levels or real sensor noise. A passing Renode test does not replace a logic analyzer capture on the real board. The updated firmware has only exercised the custom I2C model through host C tests; new ARM and Renode runs are still pending.
 
 ## Plan
 
@@ -39,11 +40,23 @@ Limits: the emulator models register behavior, not timing, electrical levels or 
 | 3 | I2C driver, BME280 reading with fixed-point compensation, logic analyzer captures |
 | 4 | SSD1306 OLED, host-side Unity tests, GitHub Actions build |
 
-## Measurements and limits
+## Implementation and validation scope
 
-To be filled in with method, conditions and raw captures as results are produced.
+PB8/PB9 use AF4/open-drain. At unchanged reset PCLK1=16 MHz, I2C FREQ=16, CCR=80 and TRISE=17 select standard-mode 100 kHz hardware configuration. Temperature uses Bosch's int32 operation order with overflow checks; pathological calibration is rejected. No floating printf, int64 compensation or pressure/humidity output is linked into the target. USART2 remains polling TX only.
+
+`ctrl_hum` is written before `ctrl_meas`; normal mode permits repeated temperature readout. The message is `temperature: 25.00\r\n` for 2500 centidegrees C. Main reads once per two LED half-periods (1000 SysTick ticks with the default 500-tick half-period). Recurring deadlines avoid accumulating service overhead, provided I2C/UART work completes before the next deadline. The emulator's instruction ticks are not hardware milliseconds.
+
+Host tests execute the same I2C C driver via a thin MMIO seam and validate 1/2/N reads, NACK recovery, saved/restored PRIMASK and compensation/formatting. They do not validate emitted ARM instructions, baud timing, electrical signals or Renode behavior. See the sibling emulator's `docs/acceptance.md`.
+
+To collect the actual GCC output needed to finish instruction integration:
+
+```sh
+bash tools/build_review_artifacts.sh
+# produces build/firmware-review-artifacts.zip
+```
+
+A fresh `make test-all` is required after building. No passing Robot/CI result is claimed for this update.
 
 ## AI assistance
 
-Written with an AI assistant: Makefile, linker script, file layout, the Renode board/script files, the Robot tests and the CI workflow.
-Written by the author: startup code (`Reset_Handler`), register definitions and every driver in `src/`. This note is kept accurate as the project grows.
+This update's `src/bme280.{c,h}`, `src/temperature.{c,h}`, changes to `src/main.c`, host tests, build/review scripts, Robot tag changes and documentation were prepared with AI assistance for author review. Earlier startup, board and infrastructure work retain their existing history. This update has not been verified on hardware.
