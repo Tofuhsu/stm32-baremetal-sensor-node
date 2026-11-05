@@ -15,7 +15,7 @@ LDFLAGS := $(CPU) -T linker.ld -nostdlib -Wl,--gc-sections -Wl,-Map=$(BUILD)/$(T
 
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin size
 
-$(BUILD)/%.o: src/%.c | $(BUILD)
+$(BUILD)/%.o: src/%.c $(wildcard src/*.h) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJS) linker.ld
@@ -56,3 +56,12 @@ test-all: $(BUILD)/$(TARGET).elf
 
 clean:
 	rm -rf $(BUILD) logs snapshots robot_output.xml log.html report.html
+
+# Pure host protocol check, deliberately separate from target/Robot acceptance.
+HOST_CC ?= cc
+EMU_DIR ?= ../cortex-m-emu
+HOST_MODELS := $(EMU_DIR)/src/bus.c $(EMU_DIR)/src/periph/rcc.c $(EMU_DIR)/src/periph/gpio.c $(EMU_DIR)/src/periph/i2c.c $(EMU_DIR)/src/periph/bme280.c
+.PHONY: test-host
+test-host: | $(BUILD)
+	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -O2 -g -DFIRMWARE_HOST_TEST -I$(EMU_DIR)/src tests/host/test_bme280_driver.c src/temperature.c $(HOST_MODELS) -o $(BUILD)/test_host_driver
+	./$(BUILD)/test_host_driver

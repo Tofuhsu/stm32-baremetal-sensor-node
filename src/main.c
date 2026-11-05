@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include "bme280.h"
+#include "temperature.h"
 
 #define REG32(addr) (*(volatile uint32_t *)(addr))
 
@@ -113,15 +115,24 @@ static void systick_init(void)
     SYST_CSR = SYST_CLKSOURCE | SYST_TICKINT | SYST_ENABLE;
 }
 
-static void delay_ms(uint32_t ms)
+static void wait_period(uint32_t *start, uint32_t ms)
 {
-    uint32_t start = ticks;
     /* Unsigned subtraction handles wraparound. The wait must not span a
      * complete 2^32-tick cycle. Keep interrupts enabled while waiting.
      * Busy-wait until WFI and sleeping-clock progression are implemented.
      */
-    while ((uint32_t)(ticks - start) < ms) {
+    while ((uint32_t)(ticks - *start) < ms) {
     }
+    *start += ms; /* absolute period: sensor/UART work does not accumulate drift */
+}
+
+static void print_temperature(void)
+{
+    int32_t value;
+    if (!bme280_read_temperature(&value)) { uart_puts("bme280 read error\r\n"); return; }
+    char message[8];
+    if (!sensor_format_temperature(value, message)) { uart_puts("temperature format error\r\n"); return; }
+    uart_puts("temperature: "); uart_puts(message); uart_puts("\r\n");
 }
 
 int main(void)
@@ -134,13 +145,18 @@ int main(void)
 
     uart_init();
     uart_puts("sensor-node boot\r\n");
+    bool sensor_ready = bme280_init();
+    if (sensor_ready) print_temperature();
+    else uart_puts("bme280 init error\r\n");
     systick_init();
+    uint32_t phase = ticks;
 
     for (;;) {
         GPIOA_BSRR = 1u << PA5;
-        delay_ms(BLINK_DELAY_MS);
+        wait_period(&phase, BLINK_DELAY_MS);
 
         GPIOA_BSRR = 1u << (PA5 + 16u);
-        delay_ms(BLINK_DELAY_MS);
+        wait_period(&phase, BLINK_DELAY_MS);
+        if (sensor_ready) print_temperature();
     }
 }
