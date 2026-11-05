@@ -1,31 +1,15 @@
 #include <stdint.h>
 #include "bme280.h"
+#include "i2c1.h"
+#include "ssd1306.h"
 #include "temperature.h"
+#include "uart.h"
 
 #define REG32(addr) (*(volatile uint32_t *)(addr))
 
 #define RCC_AHB1ENR REG32(0x40023830u)
-#define RCC_APB1ENR REG32(0x40023840u)
 #define GPIOA_MODER REG32(0x40020000u)
-#define GPIOA_OTYPER REG32(0x40020004u)
 #define GPIOA_BSRR  REG32(0x40020018u)
-#define GPIOA_AFRL  REG32(0x40020020u)
-
-#define USART2_SR  REG32(0x40004400u)
-#define USART2_DR  REG32(0x40004404u)
-#define USART2_BRR REG32(0x40004408u)
-#define USART2_CR1 REG32(0x4000440Cu)
-
-#define USART2EN   (1u << 17)
-#define USART_TXE  (1u << 7)
-#define USART_TC   (1u << 6)
-#define USART_TE   (1u << 3)
-#define USART_UE   (1u << 13)
-#define PA2       2u
-#define PA2_MODE_MASK (3u << (PA2 * 2u))
-#define PA2_AF_MODE   (2u << (PA2 * 2u))
-#define PA2_AF_MASK   (15u << (PA2 * 4u))
-#define PA2_AF7       (7u << (PA2 * 4u))
 
 #define SYST_CSR REG32(0xE000E010u)
 #define SYST_RVR REG32(0xE000E014u)
@@ -39,19 +23,12 @@
  * This firmware leaves the reset clock configuration unchanged.
  */
 #define RESET_HCLK_HZ 16000000u
-/* APB1 is also undivided at reset; USART2 uses PCLK1, not a timer clock. */
-#define RESET_PCLK1_HZ RESET_HCLK_HZ
-#define UART_BAUD 115200u
-/* OVER8=0: BRR encodes round(PCLK1 / baud), here 0x008B. */
-#define UART_BRR ((RESET_PCLK1_HZ + UART_BAUD / 2u) / UART_BAUD)
 #define SYSTICK_HZ    1000u
 #define SYSTICK_RELOAD (RESET_HCLK_HZ / SYSTICK_HZ - 1u)
 
 _Static_assert(RESET_HCLK_HZ % SYSTICK_HZ == 0u, "SysTick period must be exact");
 _Static_assert(SYSTICK_RELOAD > 0u && SYSTICK_RELOAD <= 0x00FFFFFFu,
                "SysTick reload must fit its nonzero 24-bit range");
-_Static_assert(UART_BRR >= 16u && UART_BRR <= 0xFFFFu,
-               "USART divider must fit OVER8=0 BRR with USARTDIV >= 1");
 
 #define GPIOAEN     (1u << 0)
 #define PA5         5u
@@ -73,37 +50,6 @@ void SysTick_Handler(void)
     ++ticks;
 }
 
-static void uart_init(void)
-{
-    /* main() has already enabled GPIOA. Open and read back the APB1 gate. */
-    RCC_APB1ENR |= USART2EN;
-    (void)RCC_APB1ENR;
-
-    USART2_CR1 = 0u;
-    /* Preserve PA5, SWD pins and the other AF fields. PA2 is push-pull AF7. */
-    GPIOA_MODER = (GPIOA_MODER & ~PA2_MODE_MASK) | PA2_AF_MODE;
-    GPIOA_OTYPER &= ~(1u << PA2);
-    GPIOA_AFRL = (GPIOA_AFRL & ~PA2_AF_MASK) | PA2_AF7;
-
-    USART2_BRR = UART_BRR;
-    /* OVER8=0, M=0, PCE=0: 8 data bits, no parity. CR2's reset STOP=00
-     * supplies one stop bit; this firmware leaves CR2/CR3 at reset values.
-     */
-    USART2_CR1 = USART_UE | USART_TE;
-}
-
-static void uart_puts(const char *text)
-{
-    while (*text != '\0') {
-        while ((USART2_SR & USART_TXE) == 0u) {
-        }
-        USART2_DR = (uint8_t)*text++;
-    }
-    /* TXE only means TDR is empty. Wait for the last frame to finish too. */
-    while ((USART2_SR & USART_TC) == 0u) {
-    }
-}
-
 static void systick_init(void)
 {
     /* PM0214 4.5.5: stop, set reload, clear current, then enable.
@@ -115,6 +61,70 @@ static void systick_init(void)
     SYST_CSR = SYST_CLKSOURCE | SYST_TICKINT | SYST_ENABLE;
 }
 
+static bool sensor_ready, display_ready;
+
+static void show_temperature(const char *text)
+{
+    if (!display_ready) return;
+    char shown[16] = "T ";
+    uint32_t n = 2u;
+    while (*text != '\0' && n < sizeof shown - 3u) shown[n++] = *text++;
+    shown[n++] = ' ';
+    shown[n++] = 'C';
+    shown[n] = '\0';
+    ssd1306_text(2u, 0u, "                     "); /* clear the old reading */
+    ssd1306_text(2u, 0u, shown);
+    (void)ssd1306_flush(2u, 2u);
+}
+
+static void print_temperature(void)
+{
+    int32_t value;
+    if (!sensor_ready) { uart_puts("bme280 not ready\r\n"); return; }
+    if (!bme280_read_temperature(&value)) { uart_puts("bme280 read error\r\n"); return; }
+    char message[8];
+    if (!sensor_format_temperature(value, message)) { uart_puts("temperature format error\r\n"); return; }
+    uart_puts("temperature: "); uart_puts(message); uart_puts("\r\n");
+    show_temperature(message);
+}
+
+/* Received characters are collected into a line; CR or LF ends it.
+ * "temp" prints a reading now; any other line is echoed back. */
+static char line[32];
+static uint32_t line_length;
+
+/* Written with explicit branches: `return *a == *b` makes GCC emit an IT
+ * block, which cortex-m-emu does not implement. */
+static bool same(const char *a, const char *b)
+{
+    for (;;) {
+        if (*a != *b) return false;
+        if (*a == '\0') return true;
+        ++a;
+        ++b;
+    }
+}
+
+static void handle_line(void)
+{
+    line[line_length] = '\0';
+    if (same(line, "temp")) print_temperature();
+    else { uart_puts("echo: "); uart_puts(line); uart_puts("\r\n"); }
+    line_length = 0u;
+}
+
+static void poll_commands(void)
+{
+    uint8_t byte;
+    while (uart_getc(&byte)) {
+        if (byte == '\r' || byte == '\n') {
+            if (line_length > 0u) handle_line();
+        } else if (line_length < sizeof line - 1u) {
+            line[line_length++] = (char)byte;
+        } /* longer lines are cut to 31 characters */
+    }
+}
+
 static void wait_period(uint32_t *start, uint32_t ms)
 {
     /* Unsigned subtraction handles wraparound. The wait must not span a
@@ -122,17 +132,9 @@ static void wait_period(uint32_t *start, uint32_t ms)
      * Busy-wait until WFI and sleeping-clock progression are implemented.
      */
     while ((uint32_t)(ticks - *start) < ms) {
+        poll_commands();
     }
     *start += ms; /* absolute period: sensor/UART work does not accumulate drift */
-}
-
-static void print_temperature(void)
-{
-    int32_t value;
-    if (!bme280_read_temperature(&value)) { uart_puts("bme280 read error\r\n"); return; }
-    char message[8];
-    if (!sensor_format_temperature(value, message)) { uart_puts("temperature format error\r\n"); return; }
-    uart_puts("temperature: "); uart_puts(message); uart_puts("\r\n");
 }
 
 int main(void)
@@ -145,7 +147,15 @@ int main(void)
 
     uart_init();
     uart_puts("sensor-node boot\r\n");
-    bool sensor_ready = bme280_init();
+    i2c1_init();
+    sensor_ready = bme280_init();
+    display_ready = ssd1306_init();
+    if (display_ready) {
+        ssd1306_clear();
+        ssd1306_text(0u, 0u, "SENSOR NODE");
+        display_ready = ssd1306_flush(0u, SSD1306_PAGES - 1u);
+    }
+    if (!display_ready) uart_puts("ssd1306 not found\r\n");
     if (sensor_ready) print_temperature();
     else uart_puts("bme280 init error\r\n");
     systick_init();
