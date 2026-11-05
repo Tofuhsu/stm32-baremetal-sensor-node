@@ -14,6 +14,7 @@ uint32_t firmware_mmio_read(uint32_t address) { return bus_read32(test_bus,addre
 void firmware_mmio_write(uint32_t address,uint32_t value) { bus_write32(test_bus,address,value); }
 uint32_t irq_save(void) { uint32_t previous=test_primask; test_primask=1; return previous; }
 void irq_restore(uint32_t mask) { test_primask=mask&1u; }
+#include "../../src/i2c1.c"
 #include "../../src/bme280.c"
 
 static int64_t floor_shift(int64_t value, unsigned bits)
@@ -91,7 +92,7 @@ static void test_zero_calibration(void)
     assert(!i2c_attach(i2c, device));
     for (unsigned mask = 0; mask < 2; ++mask) {
         test_primask = mask;
-        assert(!bme280_init());
+        assert(!(i2c1_init(), bme280_init()));
         assert(!sensor.control_writes && test_primask == mask);
     }
     assert(!bus_fault(test_bus));
@@ -112,17 +113,17 @@ int main(void)
     assert(!bus_add_periph(test_bus,gpio_as_periph(gpio)));
     assert(!bus_add_periph(test_bus,i2c_as_periph(i2c)));
     assert(!i2c_attach(i2c,bme280_as_device(bme)));
-    assert(bme280_init() && !test_primask);
+    assert((i2c1_init(), bme280_init()) && !test_primask);
     assert(bus_read32(test_bus,I2C1_BASE+I2C_CCR)==80 && bus_read32(test_bus,I2C1_BASE+I2C_TRISE)==17);
     assert(gpio_pin_is_af(gpio,8,4) && gpio_pin_is_af(gpio,9,4));
-    uint8_t two[2]; assert(read_registers(0x88,two,2));
+    uint8_t two[2]; assert(i2c1_read(0x76,0x88,two,2));
     assert(((unsigned)two[0]|((unsigned)two[1]<<8))==24000);
     /* Recheck the one-byte path followed immediately by a calibration burst.
      * This is the failing sequence in the supplied Renode diagnostic.
      */
     uint8_t id, cal[6];
-    assert(read_registers(0xD0, &id, 1) && id == 0x60);
-    assert(read_registers(0x88, cal, sizeof cal));
+    assert(i2c1_read(0x76,0xD0, &id, 1) && id == 0x60);
+    assert(i2c1_read(0x76,0x88, cal, sizeof cal));
     assert(u16(cal) == 24000 && s16(cal + 2) == 25600 && s16(cal + 4) == 0);
     const int32_t values[]={2500,3050,0,-1234,8500,-4000};
     for(unsigned mask=0;mask<2;++mask) {
@@ -148,7 +149,7 @@ int main(void)
     bus_free(test_bus); i2c_free(i2c); bme280_free(bme); gpio_free(gpio); rcc_free(rcc);
     test_bus=bus_new(); rcc=rcc_new(); gpio=gpio_new("GPIOB",GPIOB_BASE,rcc,RCC_GPIOB_ENABLE_BIT); i2c=i2c_new(rcc,gpio);
     assert(!bus_add_periph(test_bus,rcc_as_periph(rcc)) && !bus_add_periph(test_bus,gpio_as_periph(gpio)) && !bus_add_periph(test_bus,i2c_as_periph(i2c)));
-    assert(!bme280_init());
+    assert(!(i2c1_init(), bme280_init()));
     bus_free(test_bus); i2c_free(i2c); gpio_free(gpio); rcc_free(rcc);
     puts("PASS actual firmware C driver: I2C 1/2/N byte paths, init, T=25.00/30.50/-12.34/endpoints, PRIMASK restore, NACK recovery");
 }
