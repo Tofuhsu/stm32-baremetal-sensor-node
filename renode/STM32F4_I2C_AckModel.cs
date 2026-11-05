@@ -15,6 +15,9 @@
 //   - In master receive mode, reception of the first byte starts when ADDR is
 //     cleared (SR1 then SR2 read), not when the address byte is written. The
 //     master stretches SCL while ADDR is set, so firmware can clear ACK first.
+//   - In master transmit mode, TxE is set when ADDR is cleared, not when the
+//     address byte is written: "TxE is not set during address phase"
+//     (RM0390 Rev 9 24.6.6, p768).
 // The stock model sets BTF one byte period after RxNE whatever ACK is, so a
 // one-byte read never reaches FinishTransmission() and the attached BME280
 // model drops the next register address.
@@ -340,6 +343,12 @@ namespace Antmicro.Renode.Peripherals.I2C
                         {
                             QueueUpdate(UpdateDataReceive);
                         }
+                        // ACK model: TxE is not set during the address phase.
+                        if(wasAddressSent && dataState == DataState.WriteData && dataDirection.Value == Direction.Transmit)
+                        {
+                            txDataEmpty.Value = true;
+                            QueueUpdate(UpdateDataTransmission);
+                        }
                     }
                 })
             ;
@@ -464,9 +473,8 @@ namespace Antmicro.Renode.Peripherals.I2C
 
                     if(dataDirection.Value == Direction.Transmit)
                     {
-                        txDataEmpty.Value = true;
+                        // ACK model: TxE is set and transmission queued when ADDR is cleared.
                         dataState = DataState.WriteData;
-                        QueueUpdate(UpdateDataTransmission);
                     }
                     else
                     {
