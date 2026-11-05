@@ -61,6 +61,22 @@ clean:
 HOST_CC ?= cc
 EMU_DIR ?= ../cortex-m-emu
 HOST_MODELS := $(EMU_DIR)/src/bus.c $(EMU_DIR)/src/periph/rcc.c $(EMU_DIR)/src/periph/gpio.c $(EMU_DIR)/src/periph/i2c.c $(EMU_DIR)/src/periph/bme280.c
+.PHONY: test-unit
+# Unity unit tests on the host; no ARM toolchain or emulator needed.
+UNITY := tests/unity
+UNIT_CFLAGS := -std=c11 -Wall -Wextra -Werror -O1 -g -I$(UNITY)
+test-unit: | $(BUILD)
+	$(HOST_CC) $(UNIT_CFLAGS) tests/unit/test_ringbuf.c src/ringbuf.c $(UNITY)/unity.c -o $(BUILD)/test_ringbuf
+	./$(BUILD)/test_ringbuf
+	$(HOST_CC) $(UNIT_CFLAGS) tests/unit/test_ssd1306.c src/ssd1306.c $(UNITY)/unity.c -o $(BUILD)/test_ssd1306
+	./$(BUILD)/test_ssd1306
+
+.PHONY: test-emu
+# Run the ARM build on the sibling cortex-m-emu (built here) and check output.
+test-emu: $(BUILD)/$(TARGET).bin
+	$(MAKE) -C $(EMU_DIR) build/cortex-m-emu
+	tests/emu/run.sh $(EMU_DIR)/build/cortex-m-emu
+
 .PHONY: test-host
 test-host: | $(BUILD)
 	$(HOST_CC) -std=c11 -Wall -Wextra -Werror -O2 -g -DFIRMWARE_HOST_TEST -I$(EMU_DIR)/src tests/host/test_bme280_driver.c src/temperature.c $(HOST_MODELS) -o $(BUILD)/test_host_driver
