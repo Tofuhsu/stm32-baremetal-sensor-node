@@ -58,3 +58,35 @@ BME280 Reading Reaches UART
     Wait For Line On Uart     temperature: 25.00
     Execute Command    i2c1ack.bme280 Temperature 30.5
     Wait For Line On Uart     temperature: 30.50
+
+UART Receive Interrupt Echoes A Line
+    [Tags]             week2
+    [Documentation]    Bytes arrive through the USART2 RXNE interrupt and a ring buffer.
+    Create Terminal Tester    ${UART}    timeout=5
+    Start Emulation
+    Wait For Line On Uart     sensor-node boot
+    # The firmware does not echo characters, so do not wait for an echo.
+    Write Line To Uart        hello    waitForEcho=false
+    Wait For Line On Uart     echo: hello
+
+UART Temp Command Prints A Reading
+    [Tags]             week2
+    Execute Command    i2c1ack.bme280 Temperature 21.5
+    Create Terminal Tester    ${UART}    timeout=5
+    Start Emulation
+    Wait For Line On Uart     temperature: 21.50
+    Execute Command    i2c1ack.bme280 Temperature 22.75
+    Write Line To Uart        temp    waitForEcho=false
+    # The periodic reading comes once per second; 0.2 s of virtual time
+    # means this line can only be the reply to the command.
+    Wait For Line On Uart     temperature: 22.75    timeout=0.2
+
+Missing Display Is Reported
+    [Tags]             week4
+    [Documentation]    The board file has no SSD1306 (Renode has no model for it), so the
+    ...                address byte is NACKed and the firmware carries on without a display.
+    Execute Command    i2c1ack.bme280 Temperature 25.0
+    Create Terminal Tester    ${UART}    timeout=5
+    Start Emulation
+    Wait For Line On Uart     ssd1306 not found
+    Wait For Line On Uart     temperature: 25.00

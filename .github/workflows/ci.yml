@@ -1,4 +1,4 @@
-# Builds the firmware and runs the Renode tests on every push.
+# Builds the firmware, runs the host and emulator tests, then the Renode tests.
 # Tests tagged `todo` are skipped until the matching feature exists.
 name: ci
 
@@ -20,6 +20,21 @@ jobs:
 
       - name: Build
         run: make
+
+      - name: Unity unit tests (ring buffer, SSD1306)
+        run: make test-unit
+
+      - name: Check out cortex-m-emu
+        uses: actions/checkout@v4
+        with:
+          repository: Tofuhsu/cortex-m-emu
+          path: cortex-m-emu
+
+      - name: Driver tests against the emulator's peripheral models
+        run: make test-host EMU_DIR=cortex-m-emu
+
+      - name: Firmware on cortex-m-emu (UART, RX, OLED frame)
+        run: make test-emu EMU_DIR=cortex-m-emu
 
       - name: Install Renode
         run: |
