@@ -2,7 +2,7 @@
 
 Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE): no HAL, register-level GPIO/SysTick, polling USART2 TX and an I2C1 BME280 temperature driver. UART RX/interrupt buffering and an SSD1306 display remain planned.
 
-**Status:** GPIO/SysTick blink and the CRLF USART2 boot banner are the previous baseline. This update adds bounded polling I2C1, BME280 initialization and checked integer temperature compensation/formatting. The actual C driver passes host model tests; the updated ARM build, new instruction coverage and Renode/Robot tests have not yet run in the authoring environment. Nothing has been verified on hardware.
+**Status:** GPIO/SysTick blink, the USART2 boot banner and BME280 temperature over I2C1. The firmware builds with arm-none-eabi-gcc (`-O0`) and prints `temperature: 25.00` on the cortex-m-emu emulator. In Renode, 3 of 4 Robot tests pass; the BME280 test reads zero calibration data and is under investigation. Nothing has been verified on hardware.
 
 ## Build
 
@@ -48,15 +48,4 @@ PB8/PB9 use AF4/open-drain. At unchanged reset PCLK1=16 MHz, I2C FREQ=16, CCR=80
 
 Host tests execute the same I2C C driver via a thin MMIO seam and validate 1/2/N reads, NACK recovery, saved/restored PRIMASK and compensation/formatting. They do not validate emitted ARM instructions, baud timing, electrical signals or Renode behavior. See the sibling emulator's `docs/acceptance.md`.
 
-To collect the actual GCC output needed to finish instruction integration:
-
-```sh
-bash tools/build_review_artifacts.sh
-# produces build/firmware-review-artifacts.zip
-```
-
-A fresh `make test-all` is required after building. No passing Robot/CI result is claimed for this update.
-
-## AI assistance
-
-This update's `src/bme280.{c,h}`, `src/temperature.{c,h}`, changes to `src/main.c`, host tests, build/review scripts, Robot tag changes and documentation were prepared with AI assistance for author review. Earlier startup, board and infrastructure work retain their existing history. This update has not been verified on hardware.
+Robot status: vector table, LED and UART banner pass in Renode 1.17.0; the BME280 test currently fails (see Status).
