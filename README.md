@@ -2,7 +2,7 @@
 
 Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE): no HAL, register-level GPIO/SysTick, polling USART2 TX and an I2C1 BME280 temperature driver. UART RX/interrupt buffering and an SSD1306 display remain planned.
 
-**Status:** GPIO/SysTick blink, the USART2 boot banner and BME280 temperature over I2C1. The firmware builds with arm-none-eabi-gcc (`-O0`) and prints `temperature: 25.00` on the cortex-m-emu emulator. In Renode 1.17, 3 of 4 Robot tests pass. The BME280 test fails because Renode's `STM32F1_I2C` model does not finish a one-byte read, so its BME280 model drops the next register address; the firmware rejects the resulting all-zero calibration and prints `bme280 init error`. Details and Renode source lines: the sibling emulator's `docs/renode_differences.md`. Nothing has been verified on hardware.
+**Status:** GPIO/SysTick blink, the USART2 boot banner and BME280 temperature over I2C1. The firmware builds with arm-none-eabi-gcc (`-O0`) and prints `temperature: 25.00` on the [cortex-m-emu](https://github.com/Tofuhsu/cortex-m-emu) emulator. In Renode 1.17, 3 of 4 Robot tests pass. The BME280 test fails because Renode's `STM32F1_I2C` model does not finish a one-byte read, so its BME280 model drops the next register address; the firmware rejects the resulting all-zero calibration and prints `bme280 init error`. Details and Renode source lines: [cortex-m-emu `docs/renode_differences.md`](https://github.com/Tofuhsu/cortex-m-emu/blob/main/docs/renode_differences.md). Nothing has been verified on hardware.
 
 ## Build
 
@@ -46,6 +46,6 @@ PB8/PB9 use AF4/open-drain. At unchanged reset PCLK1=16 MHz, I2C FREQ=16, CCR=80
 
 `ctrl_hum` is written before `ctrl_meas`; normal mode permits repeated temperature readout. The message is `temperature: 25.00\r\n` for 2500 centidegrees C. Main reads once per two LED half-periods (1000 SysTick ticks with the default 500-tick half-period). Recurring deadlines avoid accumulating service overhead, provided I2C/UART work completes before the next deadline. The emulator's instruction ticks are not hardware milliseconds.
 
-Host tests execute the same I2C C driver via a thin MMIO seam and validate 1/2/N reads, NACK recovery, saved/restored PRIMASK and compensation/formatting. They do not validate emitted ARM instructions, baud timing, electrical signals or Renode behavior. See the sibling emulator's `docs/acceptance.md`.
+Host tests execute the same I2C C driver via a thin MMIO seam and validate 1/2/N reads, NACK recovery, saved/restored PRIMASK and compensation/formatting. They do not validate emitted ARM instructions, baud timing, electrical signals or Renode behavior. See [cortex-m-emu `docs/acceptance.md`](https://github.com/Tofuhsu/cortex-m-emu/blob/main/docs/acceptance.md).
 
 Robot status: vector table, LED and UART banner pass in Renode 1.17.0; the BME280 test fails on a Renode I2C model limit (see Status).
