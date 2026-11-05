@@ -24,3 +24,7 @@ UserButton: Miscellaneous.Button @ gpioPortC 13
 // External sensor wired to I2C1 (PB8 = SCL, PB9 = SDA on the Arduino header).
 // GY-BME280 boards default to address 0x76 (SDO to GND). Renode ships this model.
 bme280: I2C.BME280 @ i2c1 0x76
+
+// Renode's stm32f4.repl uses 72 MHz; the F446 runs from the 16 MHz HSI after reset (RM0390 6.2.2).
+nvic:
+    systickFrequency: 16000000
