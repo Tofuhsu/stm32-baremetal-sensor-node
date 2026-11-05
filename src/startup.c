@@ -1,6 +1,5 @@
-/* Minimal Cortex-M4 startup for blink driven by the SysTick exception.
- * All 16 core vectors are present. External IRQ vectors are not included;
- * SysTick is a core exception and does not need an external IRQ vector.
+/* Minimal Cortex-M4 startup: the 16 core vectors and external IRQs 0-38.
+ * IRQ 38 is USART2 (RM0390 table 38); every other IRQ goes to Default_Handler.
  */
 #include <stdint.h>
 
@@ -15,10 +14,16 @@ int main(void);
 void Reset_Handler(void);
 void Default_Handler(void);
 void SysTick_Handler(void);
+void USART2_IRQHandler(void);
 
-/* uintptr_t is one 32-bit vector word on the target Cortex-M4 ABI. */
-__attribute__((section(".isr_vector"), used, aligned(128)))
-const uintptr_t vector_table[16] = {
+#define USART2_IRQ 38
+#define VECTOR_COUNT (16 + USART2_IRQ + 1)
+
+/* uintptr_t is one 32-bit vector word on the target Cortex-M4 ABI.
+ * 55 words = 220 bytes, so a relocated table would need 256-byte alignment
+ * (PM0214, VTOR). The table stays at the start of flash. */
+__attribute__((section(".isr_vector"), used, aligned(256)))
+const uintptr_t vector_table[VECTOR_COUNT] = {
     (uintptr_t)&_estack,
     (uintptr_t)Reset_Handler,
     (uintptr_t)Default_Handler, /* NMI */
@@ -32,6 +37,9 @@ const uintptr_t vector_table[16] = {
     0,                         /* Reserved */
     (uintptr_t)Default_Handler, /* PendSV */
     (uintptr_t)SysTick_Handler, /* SysTick, exception 15 */
+    /* External IRQs 0-37 (GCC range designator), then USART2. */
+    [16 ... 16 + USART2_IRQ - 1] = (uintptr_t)Default_Handler,
+    [16 + USART2_IRQ] = (uintptr_t)USART2_IRQHandler,
 };
 
 void Default_Handler(void)
