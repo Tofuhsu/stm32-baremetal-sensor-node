@@ -5,16 +5,17 @@ using sysbus
 $name?="nucleo-f446re"
 $elf?=@build/firmware.elf
 
+include @renode/STM32F4_I2C_AckModel.cs
 mach create $name
 machine LoadPlatformDescription @renode/stm32f446_nucleo.repl
 
 // USART2 is the ST-LINK virtual COM port on the real board (PA2/PA3).
 showAnalyzer sysbus.usart2
 
-// Initial sensor values; change them from the monitor, e.g. `i2c1.bme280 Temperature 30`.
-i2c1.bme280 Temperature 25.0
-i2c1.bme280 Humidity 50.0
-i2c1.bme280 Pressure 1013.25
+// Initial sensor values; change them from the monitor, e.g. `i2c1ack.bme280 Temperature 30`.
+i2c1ack.bme280 Temperature 25.0
+i2c1ack.bme280 Humidity 50.0
+i2c1ack.bme280 Pressure 1013.25
 
 macro reset
 """

@@ -46,11 +46,11 @@ RENODE_TEST ?= $(HOME)/Applications/Renode.app/Contents/MacOS/renode-test
 sim: $(BUILD)/$(TARGET).elf
 	$(RENODE) renode/sensor_node.resc
 
-# Tests CI enforces (skips `todo` features and the known Renode I2C model gap).
+# Tests CI enforces (skips features tagged `todo`).
 test: $(BUILD)/$(TARGET).elf
-	$(RENODE_TEST) tests/renode/sensor_node.robot --exclude todo --exclude renode-i2c-gap
+	$(RENODE_TEST) tests/renode/sensor_node.robot --exclude todo
 
-# Every test, including unwritten features and the BME280 case that fails in Renode.
+# Every test, including the ones for unwritten features.
 test-all: $(BUILD)/$(TARGET).elf
 	$(RENODE_TEST) tests/renode/sensor_node.robot
 

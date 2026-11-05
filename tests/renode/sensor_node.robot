@@ -2,8 +2,8 @@
 Firmware tests on an emulated NUCLEO-F446RE (Renode).
 Tests tagged `todo` describe features that are not written yet; CI skips them.
 When a feature lands, remove its `todo` tag so CI starts enforcing it.
-Tests tagged `renode-i2c-gap` fail because of a known Renode I2C model limit, not a firmware
-defect (see README Status). CI skips them; `make test-all` still runs them.
+I2C1 uses renode/STM32F4_I2C_AckModel.cs, a patched copy of Renode's STM32F1_I2C model
+(see README Status); it is loaded with `include` before the platform file.
 The expected UART strings are a proposed format; change them together with the firmware.
 
 *** Settings ***
@@ -20,6 +20,7 @@ ${LED}            sysbus.gpioPortA.UserLED
 *** Keywords ***
 Create Machine
     Execute Command    using sysbus
+    Execute Command    include @${ROOT}/renode/STM32F4_I2C_AckModel.cs
     Execute Command    mach create "nucleo-f446re"
     Execute Command    machine LoadPlatformDescription @${REPL}
     Execute Command    sysbus LoadELF @${ELF}
@@ -48,12 +49,12 @@ UART Prints Boot Banner
     Wait For Line On Uart     sensor-node boot
 
 BME280 Reading Reaches UART
-    [Tags]             week3    renode-i2c-gap
-    Execute Command    i2c1.bme280 Temperature 25.0
-    Execute Command    i2c1.bme280 Humidity 50.0
-    Execute Command    i2c1.bme280 Pressure 1013.25
+    [Tags]             week3
+    Execute Command    i2c1ack.bme280 Temperature 25.0
+    Execute Command    i2c1ack.bme280 Humidity 50.0
+    Execute Command    i2c1ack.bme280 Pressure 1013.25
     Create Terminal Tester    ${UART}    timeout=5
     Start Emulation
     Wait For Line On Uart     temperature: 25.00
-    Execute Command    i2c1.bme280 Temperature 30.5
+    Execute Command    i2c1ack.bme280 Temperature 30.5
     Wait For Line On Uart     temperature: 30.50

@@ -2,7 +2,7 @@
 
 Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE): no HAL, register-level GPIO/SysTick, polling USART2 TX and an I2C1 BME280 temperature driver. UART RX/interrupt buffering and an SSD1306 display remain planned.
 
-**Status:** GPIO/SysTick blink, the USART2 boot banner and BME280 temperature over I2C1. The firmware builds with arm-none-eabi-gcc (`-O0`) and prints `temperature: 25.00` on the [cortex-m-emu](https://github.com/Tofuhsu/cortex-m-emu) emulator. In Renode 1.17, 3 of 4 Robot tests pass. The BME280 test fails because Renode's `STM32F1_I2C` model does not finish a one-byte read, so its BME280 model drops the next register address; the firmware rejects the resulting all-zero calibration and prints `bme280 init error`. Details and Renode source lines: [cortex-m-emu `docs/renode_differences.md`](https://github.com/Tofuhsu/cortex-m-emu/blob/main/docs/renode_differences.md). Nothing has been verified on hardware.
+**Status:** GPIO/SysTick blink, the USART2 boot banner and BME280 temperature over I2C1. The firmware builds with arm-none-eabi-gcc (`-O0`) and prints `temperature: 25.00` on the [cortex-m-emu](https://github.com/Tofuhsu/cortex-m-emu) emulator. In Renode 1.17, all 4 Robot tests pass with a patched I2C1 model, `renode/STM32F4_I2C_AckModel.cs`. Renode's stock `STM32F1_I2C` model does not model CR1.ACK and starts receiving before ADDR is cleared, so a one-byte read never finishes and its BME280 model drops the next register address; with the stock model the firmware rejects the resulting all-zero calibration and prints `bme280 init error`. The firmware is unchanged; only the Renode model is patched. Details and Renode source lines: [cortex-m-emu `docs/renode_differences.md`](https://github.com/Tofuhsu/cortex-m-emu/blob/main/docs/renode_differences.md). Nothing has been verified on hardware.
 
 ## Build
 
@@ -20,14 +20,15 @@ The firmware also runs on an emulated board in [Renode](https://renode.io) 1.17,
 
 ```bash
 make sim       # interactive run with a USART2 window
-make test      # Robot tests CI enforces (3 tests; skips the BME280 case)
-make test-all  # all 4 Robot tests, including the BME280 case that fails in Renode
+make test      # Robot tests CI enforces (skips tests tagged todo)
+make test-all  # all Robot tests
 make test-host # actual C protocol/compensation tests; sibling cortex-m-emu checkout required
 ```
 
-- `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model).
-- `tests/renode/sensor_node.robot`: checks the vector table, LED, CRLF UART banner and temperature lines at 25.00 and 30.50 C. Three pass; the BME280 case fails on the Renode model limit described in Status. It is tagged `renode-i2c-gap`, so `make test` and CI skip it and `make test-all` still runs it.
-- `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi` and runs `make test` (the three passing Robot tests).
+- `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model). It replaces the stock I2C1 with `i2c1ack`, so the sensor is `i2c1ack.bme280` in the monitor.
+- `renode/STM32F4_I2C_AckModel.cs`: MIT-licensed copy of Renode's `STM32F1_I2C` (the version pinned by Renode 1.17.0) with two changes, each marked `ACK model` in the source. CR1.ACK/POS are stored, and another byte is received only after an ACKed one. In receive mode, the first byte is received only after ADDR is cleared. Loaded with `include` before the platform file.
+- `tests/renode/sensor_node.robot`: checks the vector table, LED, CRLF UART banner and temperature lines at 25.00 and 30.50 C. All four pass.
+- `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi` and runs `make test`.
 
 Limits: the emulator models register behavior, not timing, electrical levels or real sensor noise. A passing Renode test does not replace a logic analyzer capture on the real board. The ARM build prints 25.00 and 30.50 on the cortex-m-emu emulator; Renode results are in Status.
 

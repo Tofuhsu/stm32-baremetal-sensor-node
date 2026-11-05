@@ -21,9 +21,20 @@ UserButton: Miscellaneous.Button @ gpioPortC 13
     invert: true
     -> gpioPortC@13
 
+// Replace Renode's I2C1 model with a copy that models CR1.ACK, so a one-byte
+// read ends as in RM0390 24.3.3. Load renode/STM32F4_I2C_AckModel.cs with
+// `include` before this file; see that file for the changes. A repl entry
+// cannot change an existing peripheral's type, so the stock i2c1 is removed
+// and the copy is registered at the same address as i2c1ack.
+i2c1: @none
+
+i2c1ack: I2C.STM32F4_I2C_AckModel @ sysbus 0x40005400
+    EventInterrupt -> nvic@31
+    ErrorInterrupt -> nvic@32
+
 // External sensor wired to I2C1 (PB8 = SCL, PB9 = SDA on the Arduino header).
 // GY-BME280 boards default to address 0x76 (SDO to GND). Renode ships this model.
-bme280: I2C.BME280 @ i2c1 0x76
+bme280: I2C.BME280 @ i2c1ack 0x76
 
 // Renode's stm32f4.repl uses 72 MHz; the F446 runs from the 16 MHz HSI after reset (RM0390 6.2.2).
 nvic:
