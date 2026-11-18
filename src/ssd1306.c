@@ -44,8 +44,8 @@ static bool commands(const uint8_t *bytes, uint32_t count)
 bool ssd1306_init(void)
 {
     /* Common power-on sequence for a 128x64 module with the internal charge
-     * pump (8D 14); command meanings from the SSD1306 command table. Not yet
-     * checked on a real module. */
+     * pump (8D 14); command meanings from the SSD1306 command table. Checked
+     * on one 128x64 module (2026-11-18). */
     static const uint8_t sequence[] = {
         0xAE,       /* display off */
         0xD5, 0x80, /* clock divide ratio / oscillator */
