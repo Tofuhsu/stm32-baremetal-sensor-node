@@ -2,7 +2,7 @@
 
 Bare-metal C firmware for an STM32F446RE (NUCLEO-F446RE), no HAL: register-level GPIO and SysTick, interrupt-driven USART2 TX/RX with ring buffers, an I2C1 BME280 temperature driver and an SSD1306 128x64 OLED driver.
 
-**Status:** All software items of the four-week plan are done; the two hardware items (first SWD/GDB session on the board, logic analyzer captures) are not, because nothing has been run on hardware yet.
+**Status:** All items of the four-week plan are done except checking the SSD1306 on a real module. On a NUCLEO-F446RE (2026-11-18) the firmware boots, blinks LD2, reads a BME280 over I2C1 every second, and GDB works over the on-board ST-LINK; logic analyzer captures show SCL at 100.0 kHz and the expected 1- and 3-byte read endings. Logs and captures: [cortex-m-emu `docs/hardware/`](https://github.com/Tofuhsu/cortex-m-emu/tree/main/docs/hardware).
 - On the [cortex-m-emu](https://github.com/Tofuhsu/cortex-m-emu) emulator the `-O0` build prints `temperature: 25.00`, answers UART commands, and draws `SENSOR NODE` and `T 25.00 C` on the emulated SSD1306 (`make test-emu` compares the frame with `tests/emu/oled_25.00.pbm`).
 - In Renode 1.17, all 7 Robot tests pass, using a patched I2C1 model, `renode/STM32F4_I2C_AckModel.cs`. Renode's stock `STM32F1_I2C` does not model CR1.ACK and starts receiving before ADDR is cleared, so a one-byte read never finishes and its BME280 model drops the next register address; with the stock model the firmware rejects the all-zero calibration and prints `bme280 init error`. Only the Renode model is patched, not the firmware. Details: [cortex-m-emu `docs/renode_differences.md`](https://github.com/Tofuhsu/cortex-m-emu/blob/main/docs/renode_differences.md).
 - Renode has no SSD1306 model, so there the display is reported missing and the firmware carries on.
@@ -42,19 +42,19 @@ make sim       # interactive Renode run with a USART2 window
 - `tests/unity/`: Unity v2.6.0, unmodified, MIT license (see `tests/unity/README.md` for hashes).
 - `tests/renode/sensor_node.robot`: vector table, LED, boot banner, BME280 at 25.00 and 30.50 C, RX echo, the `temp` command (answered within 0.2 s of virtual time, so it cannot be the periodic reading), and the missing-display message.
 - `renode/stm32f446_nucleo.repl`: board description. Renode has no STM32F446 file, so it extends the generic STM32F4 file and sets the F446RE flash/SRAM sizes, LD2 on PA5, B1 on PC13 and a BME280 at 0x76 on I2C1 (Renode's built-in `I2C.BME280` model). It replaces the stock I2C1 with `i2c1ack`, so the sensor is `i2c1ack.bme280` in the monitor.
-- `renode/STM32F4_I2C_AckModel.cs`: MIT-licensed copy of Renode's `STM32F1_I2C` (the version pinned by Renode 1.17.0). Each change is marked `ACK model` in the source and follows RM0390: CR1.ACK/POS are stored; another byte is received only after an ACKed one; in receive mode the first byte is received only after ADDR is cleared; in transmit mode TxE is set only after ADDR is cleared, and BTF only after a data byte. An `InstantTransfers` option (off by default, so not used by these tests) completes bytes at once for cortex-m-emu's instruction-by-instruction comparison. Loaded with `include` before the platform file.
+- `renode/STM32F4_I2C_AckModel.cs`: MIT-licensed copy of Renode's `STM32F1_I2C` (the version pinned by Renode 1.17.0). Each change is marked `ACK model` in the source and follows RM0390: CR1.ACK/POS are stored; another byte is received only after an ACKed one; in receive mode the first byte is received only after ADDR is cleared; in transmit mode BTF is set only after a data byte (TxE is set together with ADDR, as measured on the board). An `InstantTransfers` option (off by default, so not used by these tests) completes bytes at once for cortex-m-emu's instruction-by-instruction comparison. Loaded with `include` before the platform file.
 - `.github/workflows/ci.yml`: builds with `gcc-arm-none-eabi`, then runs `test-unit`, `test-host`, `test-emu` (checking out cortex-m-emu) and `make test` in Renode.
 
-Limits: neither emulator models timing, electrical levels or real sensor noise, and passing tests do not replace logic analyzer captures on the real board. The SSD1306 init sequence and font have only been checked against cortex-m-emu's SSD1306 model, not a real module. The ring buffer relies on single-core, aligned 32-bit index loads and stores; it is not safe with more than one producer or consumer.
+Limits: neither emulator models timing, electrical levels or real sensor noise; the hardware checks above cover one board and one sensor module at room temperature. The SSD1306 init sequence and font have only been checked against cortex-m-emu's SSD1306 model, not a real module. The ring buffer relies on single-core, aligned 32-bit index loads and stores; it is not safe with more than one producer or consumer.
 
 ## Plan
 
 | Week | Scope | Status |
 | --- | --- | --- |
-| 1 | Toolchain, linker script, startup code, register-level LED blink, first SWD/GDB session | Done except the SWD/GDB session on a board |
+| 1 | Toolchain, linker script, startup code, register-level LED blink, first SWD/GDB session | Done |
 | 2 | SysTick timebase, UART TX/RX with interrupts and a ring buffer | Done |
-| 3 | I2C driver, BME280 reading with fixed-point compensation, logic analyzer captures | Done except the logic analyzer captures |
-| 4 | SSD1306 OLED, host-side Unity tests, GitHub Actions build | Done (OLED on the emulator model only) |
+| 3 | I2C driver, BME280 reading with fixed-point compensation, logic analyzer captures | Done |
+| 4 | SSD1306 OLED, host-side Unity tests, GitHub Actions build | Done (OLED checked on the emulator model; real module pending) |
 
 ## Implementation and validation scope
 

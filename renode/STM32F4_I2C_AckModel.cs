@@ -15,9 +15,10 @@
 //   - In master receive mode, reception of the first byte starts when ADDR is
 //     cleared (SR1 then SR2 read), not when the address byte is written. The
 //     master stretches SCL while ADDR is set, so firmware can clear ACK first.
-//   - In master transmit mode, TxE is set when ADDR is cleared, not when the
-//     address byte is written: "TxE is not set during address phase"
-//     (RM0390 Rev 9 24.6.6, p768). BTF stays clear until a data byte is sent.
+//   - In master transmit mode, BTF stays clear after the address byte until a
+//     data byte has been sent. TxE is set together with ADDR, as in the stock
+//     model: on an STM32F446 the first SR1 read with ADDR set is 0x0082, and
+//     after ADDR is cleared it is 0x0080.
 //   - InstantTransfers (default false): when true, byte transfers complete
 //     immediately instead of one byte period later in virtual time. Only for
 //     instruction-by-instruction comparison with an emulator whose transfers
@@ -350,13 +351,6 @@ namespace Antmicro.Renode.Peripherals.I2C
                         {
                             QueueUpdate(UpdateDataReceive);
                         }
-                        // ACK model: TxE is not set during the address phase. After ADDR
-                        // is cleared, TxE = 1 and BTF = 0 until a data byte has been sent
-                        // (EV8_1 in RM0390 Rev 9 Figure 275).
-                        if(wasAddressSent && dataState == DataState.WriteData && dataDirection.Value == Direction.Transmit)
-                        {
-                            txDataEmpty.Value = true;
-                        }
                     }
                 })
             ;
@@ -488,7 +482,9 @@ namespace Antmicro.Renode.Peripherals.I2C
 
                     if(dataDirection.Value == Direction.Transmit)
                     {
-                        // ACK model: TxE is set and transmission queued when ADDR is cleared.
+                        // ACK model: TxE is set with ADDR (measured on an STM32F446: SR1 =
+                        // 0x0082), but BTF is not queued until a data byte is written.
+                        txDataEmpty.Value = true;
                         dataState = DataState.WriteData;
                     }
                     else
